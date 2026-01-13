@@ -7,19 +7,27 @@ import com.mycompany.model.InvalidCircuitException;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.net.URLDecoder;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import jakarta.servlet.http.Cookie;
 
 /**
  * Servlet handling impedance calculations for capacitors.
  *
- * Both GET and POST delegate to processRequest to avoid duplication.
- * Writes a sanitized cookie "lastCalc" on successful calculation (does not change HTML output).
+ * This servlet provides access to capacitor impedance calculations using
+ * the shared ImpedanceModel instance. Both GET and POST requests are handled
+ * uniformly without code duplication by delegating to a common processRequest method. 
+ *
+ * Cookies:
+ * - writes cookies "lastFrequency", "lastComponent" and "lastValue" on successful calculation
+ * - reads cookies and displays last-used values on the input form
  *
  * @author Kamil Fulneczek
  * @version 1.2
@@ -38,19 +46,47 @@ public class CapacitorServlet extends HttpServlet {
         String frequencyStr = req.getParameter("frequency");
 
         resp.setContentType("text/html;charset=UTF-8");
-        PrintWriter out = resp.getWriter();
-
         String ctx = getContextPath(req);
 
         if (capacitanceStr == null || frequencyStr == null ||
                 capacitanceStr.isEmpty() || frequencyStr.isEmpty()) {
-            displayForm(out, ctx);
+            displayForm(req, resp, ctx);
         } else {
-            performCalculation(out, ctx, req, resp, capacitanceStr, frequencyStr);
+            performCalculation(req, resp, ctx, capacitanceStr, frequencyStr);
         }
     }
 
-    private void displayForm(PrintWriter out, String ctx) {
+    /**
+     * Display the input form for capacitor impedance calculation.
+     *
+     * Reads cookies (if present) and displays a single informational line
+     * in format: "Last used: C: 15 | frequency: 40.0 Hz".
+     *
+     * @param req the HttpServletRequest
+     * @param resp the HttpServletResponse
+     * @param ctx the context path
+     * @throws IOException if I/O error occurs
+     */
+    private void displayForm(HttpServletRequest req, HttpServletResponse resp, String ctx) throws IOException {
+        PrintWriter out = resp.getWriter();
+
+        // read cookies
+        String lastFreq = null;
+        String lastComp = null;
+        String lastVal = null;
+        Cookie[] cookies = req.getCookies();
+        if (cookies != null) {
+            for (Cookie c : cookies) {
+                if ("lastFrequency".equals(c.getName())) {
+                    lastFreq = URLDecoder.decode(c.getValue(), StandardCharsets.UTF_8);
+                } else if ("lastComponent".equals(c.getName())) {
+                    lastComp = URLDecoder.decode(c.getValue(), StandardCharsets.UTF_8);
+                } else if ("lastValue".equals(c.getName())) {
+                    lastVal = URLDecoder.decode(c.getValue(), StandardCharsets.UTF_8);
+                }
+            }
+        }
+
         out.println("<! DOCTYPE html>");
         out.println("<html lang=\"en\">");
         out.println("<head>");
@@ -59,6 +95,27 @@ public class CapacitorServlet extends HttpServlet {
         out.println("</head>");
         out.println("<body>");
         out.println("    <h1>Capacitor Impedance Calculator</h1>");
+
+        if (lastComp != null || lastVal != null || lastFreq != null) {
+            StringBuilder info = new StringBuilder("Last used:");
+            boolean added = false;
+            if (lastComp != null) {
+                info.append(" ").append(lastComp);
+                if (lastVal != null) {
+                    info.append(": ").append(lastVal);
+                }
+                added = true;
+            } else if (lastVal != null) {
+                info.append(" ").append(lastVal);
+                added = true;
+            }
+            if (lastFreq != null) {
+                if (added) info.append(" |");
+                info.append(" frequency: ").append(lastFreq).append(" Hz");
+            }
+            out.println("    <p style=\"font-size:small;color:gray;\">" + info.toString() + "</p>");
+        }
+
         out.println("    <form action=\"" + ctx + "/capacitor\" method=\"post\">");
         out.println("        <label for=\"capacitance\">Capacitance (Farads):</label>");
         out.println("        <input type=\"text\" name=\"capacitance\" id=\"capacitance\" required><br><br>");
@@ -71,13 +128,8 @@ public class CapacitorServlet extends HttpServlet {
         out.println("</html>");
     }
 
-    /**
-     * Perform the impedance calculation and display the result.
-     * Visible output is unchanged from the original.
-     * Cookie writing is sanitized and wrapped in try/catch to avoid breaking response.
-     */
-    private void performCalculation(PrintWriter out, String ctx, HttpServletRequest req, HttpServletResponse resp, String capacitanceStr, String frequencyStr)
-            throws ServletException {
+    private void performCalculation(HttpServletRequest req, HttpServletResponse resp, String ctx, String capacitanceStr, String frequencyStr)
+            throws ServletException, IOException {
 
         ImpedanceModel model = (ImpedanceModel) getServletContext()
                 .getAttribute(AppContextListener.MODEL_ATTRIBUTE);
@@ -85,6 +137,8 @@ public class CapacitorServlet extends HttpServlet {
         if (model == null) {
             throw new ServletException("ImpedanceModel not found in ServletContext");
         }
+
+        PrintWriter out = resp.getWriter();
 
         out.println("<! DOCTYPE html>");
         out.println("<html lang=\"en\">");
@@ -107,17 +161,22 @@ public class CapacitorServlet extends HttpServlet {
             out.println("    <p>Impedance:  " + impedance.toString() + "</p>");
             out.println("    <p>Magnitude: " + String.format("%.6g", impedance.magnitude()) + " Ω</p>");
 
-            // prepare cookie value and sanitize it so it cannot break cookie creation
-            String raw = "C:" + capacitanceStr + "@" + frequencyStr;
-            String cookieVal = sanitizeCookieValue(raw);
-            Cookie c = new Cookie("lastCalc", cookieVal);
-            c.setPath(req.getContextPath().isEmpty() ? "/" : req.getContextPath());
-            c.setMaxAge(7 * 24 * 60 * 60);
-            try {
-                resp.addCookie(c);
-            } catch (IllegalArgumentException ex) {
-                // ignore cookie errors to avoid interrupting response
-            }
+            // set cookies
+            Cookie lastFreq = new Cookie("lastFrequency", URLEncoder.encode(String.valueOf(frequency), StandardCharsets.UTF_8));
+            lastFreq.setMaxAge(60 * 60 * 24 * 30);
+            String path = req.getContextPath();
+            lastFreq.setPath(path == null || path.isEmpty() ? "/" : path);
+            resp.addCookie(lastFreq);
+
+            Cookie lastComp = new Cookie("lastComponent", URLEncoder.encode("C", StandardCharsets.UTF_8));
+            lastComp.setMaxAge(60 * 60 * 24 * 30);
+            lastComp.setPath(path == null || path.isEmpty() ? "/" : path);
+            resp.addCookie(lastComp);
+
+            Cookie lastVal = new Cookie("lastValue", URLEncoder.encode(String.valueOf(capacitance), StandardCharsets.UTF_8));
+            lastVal.setMaxAge(60 * 60 * 24 * 30);
+            lastVal.setPath(path == null || path.isEmpty() ? "/" : path);
+            resp.addCookie(lastVal);
 
         } catch (NumberFormatException e) {
             out.println("    <h1>Error</h1>");
@@ -132,11 +191,6 @@ public class CapacitorServlet extends HttpServlet {
         out.println("    <br><a href=\"" + ctx + "/\">Back to Home</a>");
         out.println("</body>");
         out.println("</html>");
-    }
-
-    private String sanitizeCookieValue(String s) {
-        if (s == null) return "";
-        return s.replaceAll("[^A-Za-z0-9@:_\\-\\.]", "_");
     }
 
     @Override
