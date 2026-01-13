@@ -1,54 +1,178 @@
 package com.mycompany.controller;
 
+import com.mycompany. model.ImpedanceModel;
 import com.mycompany.model.Inductor;
-import com.mycompany.model.Complex;
+import com.mycompany. model.Complex;
 import com.mycompany.model.InvalidCircuitException;
 
-import jakarta.servlet.annotation.WebServlet;
+import jakarta.servlet.ServletException;
+import jakarta. servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
-import java.io.IOException;
+import java.io. IOException;
+import java. io.PrintWriter;
 
-@WebServlet(name = "InductorServlet", urlPatterns = "/inductor")
+/**
+ * Servlet handling impedance calculations for inductors.
+ *
+ * This servlet provides access to inductor impedance calculations using
+ * the shared ImpedanceModel instance. Both GET and POST requests are handled
+ * uniformly without code duplication by delegating to a common processRequest method. 
+ *
+ * @author Kamil Fulneczek
+ * @version 1.1
+ */
+@WebServlet(name = "InductorServlet", urlPatterns = {"/inductor"})
 public class InductorServlet extends HttpServlet {
-    @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        resp.setContentType("text/html");
-        resp.getWriter().write(
-            "<form action='/inductor' method='post'>" +
-            "<label>Inductance (Henries): <input name='inductance' type='number' step='0.0001' required /></label><br />" +
-            "<label>Frequency (Hz): <input name='frequency' type='number' required /></label><br />" +
-            "<button type='submit'>Calculate</button>" +
-            "</form>"
-        );
+
+    /**
+     * Get the context path for building URLs.
+     *
+     * @param req the HttpServletRequest
+     * @return context path string
+     */
+    private String getContextPath(HttpServletRequest req) {
+        return req.getContextPath();
     }
 
-    @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        double inductance = Double.parseDouble(req.getParameter("inductance"));
-        double frequency = Double.parseDouble(req.getParameter("frequency"));
+    /**
+     * Process the request for both GET and POST methods. 
+     *
+     * If inductance and frequency parameters are provided, performs the calculation. 
+     * Otherwise, displays the input form.
+     *
+     * @param req the HttpServletRequest
+     * @param resp the HttpServletResponse
+     * @throws ServletException if a servlet-specific error occurs
+     * @throws IOException if an I/O error occurs
+     */
+    protected void processRequest(HttpServletRequest req, HttpServletResponse resp)
+            throws ServletException, IOException {
 
-        resp.setContentType("text/html");
+        String inductanceStr = req.getParameter("inductance");
+        String frequencyStr = req.getParameter("frequency");
+
+        resp.setContentType("text/html;charset=UTF-8");
+        PrintWriter out = resp.getWriter();
+
+        String ctx = getContextPath(req);
+
+        if (inductanceStr == null || frequencyStr == null ||
+                inductanceStr.isEmpty() || frequencyStr.isEmpty()) {
+            displayForm(out, ctx);
+        } else {
+            performCalculation(out, ctx, inductanceStr, frequencyStr);
+        }
+    }
+
+    /**
+     * Display the input form for inductor impedance calculation.
+     *
+     * @param out the PrintWriter to write to
+     * @param ctx the context path
+     */
+    private void displayForm(PrintWriter out, String ctx) {
+        out.println("<! DOCTYPE html>");
+        out.println("<html lang=\"en\">");
+        out.println("<head>");
+        out.println("    <meta charset=\"UTF-8\">");
+        out.println("    <title>Inductor Impedance Calculator</title>");
+        out.println("</head>");
+        out.println("<body>");
+        out.println("    <h1>Inductor Impedance Calculator</h1>");
+        out.println("    <form action=\"" + ctx + "/inductor\" method=\"post\">");
+        out.println("        <label for=\"inductance\">Inductance (Henrys):</label>");
+        out.println("        <input type=\"text\" name=\"inductance\" id=\"inductance\" required><br><br>");
+        out.println("        <label for=\"frequency\">Frequency (Hz):</label>");
+        out.println("        <input type=\"text\" name=\"frequency\" id=\"frequency\" required><br><br>");
+        out.println("        <button type=\"submit\">Calculate</button>");
+        out.println("    </form>");
+        out.println("    <br><a href=\"" + ctx + "/\">Back to Home</a>");
+        out.println("</body>");
+        out.println("</html>");
+    }
+
+    /**
+     * Perform the impedance calculation and display the result. 
+     *
+     * @param out the PrintWriter to write to
+     * @param ctx the context path
+     * @param inductanceStr the inductance value as string
+     * @param frequencyStr the frequency value as string
+     * @throws ServletException if the model is not found
+     */
+    private void performCalculation(PrintWriter out, String ctx, String inductanceStr, String frequencyStr)
+            throws ServletException {
+
+        ImpedanceModel model = (ImpedanceModel) getServletContext()
+                .getAttribute(AppContextListener.MODEL_ATTRIBUTE);
+
+        if (model == null) {
+            throw new ServletException("ImpedanceModel not found in ServletContext");
+        }
+
+        out. println("<! DOCTYPE html>");
+        out.println("<html lang=\"en\">");
+        out.println("<head>");
+        out.println("    <meta charset=\"UTF-8\">");
+        out.println("    <title>Inductor Impedance Result</title>");
+        out.println("</head>");
+        out.println("<body>");
 
         try {
+            double inductance = Double.parseDouble(inductanceStr);
+            double frequency = Double.parseDouble(frequencyStr);
+
             Inductor inductor = new Inductor(inductance);
-            Complex impedance = inductor.getImpedance(frequency);
-            
-            resp.getWriter().write(
-                "<h1>Inductor Impedance Result</h1>" +
-                "<p>Inductance: " + inductance + " Henries</p>" +
-                "<p>Impedance: " + impedance.toString() + "</p>" +
-                "<p>Magnitude: " + impedance.magnitude() + " Ohms</p>" +
-                "<a href='/'>Back to Home</a>"
-            );
+            Complex impedance = model.calculateImpedance(inductor, frequency);
+
+            out.println("    <h1>Inductor Impedance Result</h1>");
+            out.println("    <p>Inductance:  " + inductance + " H</p>");
+            out.println("    <p>Frequency: " + frequency + " Hz</p>");
+            out.println("    <p>Impedance:  " + impedance. toString() + "</p>");
+            out.println("    <p>Magnitude: " + String.format("%.6g", impedance.magnitude()) + " Ω</p>");
+        } catch (NumberFormatException e) {
+            out.println("    <h1>Error</h1>");
+            out.println("    <p style=\"color: red;\">Invalid number format:  " + e.getMessage() + "</p>");
         } catch (InvalidCircuitException e) {
-            resp.getWriter().write(
-                "<h1>Error Calculating Impedance</h1>" +
-                "<p>" + e.getMessage() + "</p>" +
-                "<a href='/'>Back to Home</a>"
-            );
+            out.println("    <h1>Error</h1>");
+            out.println("    <p style=\"color: red;\">Calculation error: " + e.getMessage() + "</p>");
         }
+
+        out. println("    <br><a href=\"" + ctx + "/inductor\">Calculate Another</a>");
+        out.println("    <br><a href=\"" + ctx + "/history\">View History</a>");
+        out.println("    <br><a href=\"" + ctx + "/\">Back to Home</a>");
+        out.println("</body>");
+        out.println("</html>");
+    }
+
+    /**
+     * Handle GET requests by delegating to processRequest. 
+     *
+     * @param req the HttpServletRequest
+     * @param resp the HttpServletResponse
+     * @throws ServletException if a servlet-specific error occurs
+     * @throws IOException if an I/O error occurs
+     */
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+            throws ServletException, IOException {
+        processRequest(req, resp);
+    }
+
+    /**
+     * Handle POST requests by delegating to processRequest. 
+     *
+     * @param req the HttpServletRequest
+     * @param resp the HttpServletResponse
+     * @throws ServletException if a servlet-specific error occurs
+     * @throws IOException if an I/O error occurs
+     */
+    @Override
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp)
+            throws ServletException, IOException {
+        processRequest(req, resp);
     }
 }
