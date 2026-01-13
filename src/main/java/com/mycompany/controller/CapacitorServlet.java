@@ -1,53 +1,36 @@
 package com.mycompany.controller;
 
-import com.mycompany. model.ImpedanceModel;
-import com.mycompany.model. Capacitor;
-import com.mycompany. model.Complex;
+import com.mycompany.model.ImpedanceModel;
+import com.mycompany.model.Capacitor;
+import com.mycompany.model.Complex;
 import com.mycompany.model.InvalidCircuitException;
 
 import jakarta.servlet.ServletException;
-import jakarta. servlet.annotation.WebServlet;
+import jakarta.servlet.annotation.WebServlet;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
-import java.io. IOException;
-import java. io.PrintWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
 
 /**
  * Servlet handling impedance calculations for capacitors.
  *
- * This servlet provides access to capacitor impedance calculations using
- * the shared ImpedanceModel instance. Both GET and POST requests are handled
- * uniformly without code duplication by delegating to a common processRequest method. 
+ * Both GET and POST delegate to processRequest to avoid duplication.
+ * Writes a sanitized cookie "lastCalc" on successful calculation (does not change HTML output).
  *
  * @author Kamil Fulneczek
- * @version 1.1
+ * @version 1.2
  */
 @WebServlet(name = "CapacitorServlet", urlPatterns = {"/capacitor"})
 public class CapacitorServlet extends HttpServlet {
 
-    /**
-     * Get the context path for building URLs.
-     *
-     * @param req the HttpServletRequest
-     * @return context path string
-     */
     private String getContextPath(HttpServletRequest req) {
         return req.getContextPath();
     }
 
-    /**
-     * Process the request for both GET and POST methods. 
-     *
-     * If capacitance and frequency parameters are provided, performs the calculation. 
-     * Otherwise, displays the input form.
-     *
-     * @param req the HttpServletRequest
-     * @param resp the HttpServletResponse
-     * @throws ServletException if a servlet-specific error occurs
-     * @throws IOException if an I/O error occurs
-     */
     protected void processRequest(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
 
@@ -63,16 +46,10 @@ public class CapacitorServlet extends HttpServlet {
                 capacitanceStr.isEmpty() || frequencyStr.isEmpty()) {
             displayForm(out, ctx);
         } else {
-            performCalculation(out, ctx, capacitanceStr, frequencyStr);
+            performCalculation(out, ctx, req, resp, capacitanceStr, frequencyStr);
         }
     }
 
-    /**
-     * Display the input form for capacitor impedance calculation.
-     *
-     * @param out the PrintWriter to write to
-     * @param ctx the context path
-     */
     private void displayForm(PrintWriter out, String ctx) {
         out.println("<! DOCTYPE html>");
         out.println("<html lang=\"en\">");
@@ -95,15 +72,11 @@ public class CapacitorServlet extends HttpServlet {
     }
 
     /**
-     * Perform the impedance calculation and display the result. 
-     *
-     * @param out the PrintWriter to write to
-     * @param ctx the context path
-     * @param capacitanceStr the capacitance value as string
-     * @param frequencyStr the frequency value as string
-     * @throws ServletException if the model is not found
+     * Perform the impedance calculation and display the result.
+     * Visible output is unchanged from the original.
+     * Cookie writing is sanitized and wrapped in try/catch to avoid breaking response.
      */
-    private void performCalculation(PrintWriter out, String ctx, String capacitanceStr, String frequencyStr)
+    private void performCalculation(PrintWriter out, String ctx, HttpServletRequest req, HttpServletResponse resp, String capacitanceStr, String frequencyStr)
             throws ServletException {
 
         ImpedanceModel model = (ImpedanceModel) getServletContext()
@@ -113,7 +86,7 @@ public class CapacitorServlet extends HttpServlet {
             throw new ServletException("ImpedanceModel not found in ServletContext");
         }
 
-        out. println("<! DOCTYPE html>");
+        out.println("<! DOCTYPE html>");
         out.println("<html lang=\"en\">");
         out.println("<head>");
         out.println("    <meta charset=\"UTF-8\">");
@@ -131,8 +104,21 @@ public class CapacitorServlet extends HttpServlet {
             out.println("    <h1>Capacitor Impedance Result</h1>");
             out.println("    <p>Capacitance: " + capacitance + " F</p>");
             out.println("    <p>Frequency: " + frequency + " Hz</p>");
-            out.println("    <p>Impedance:  " + impedance. toString() + "</p>");
+            out.println("    <p>Impedance:  " + impedance.toString() + "</p>");
             out.println("    <p>Magnitude: " + String.format("%.6g", impedance.magnitude()) + " Ω</p>");
+
+            // prepare cookie value and sanitize it so it cannot break cookie creation
+            String raw = "C:" + capacitanceStr + "@" + frequencyStr;
+            String cookieVal = sanitizeCookieValue(raw);
+            Cookie c = new Cookie("lastCalc", cookieVal);
+            c.setPath(req.getContextPath().isEmpty() ? "/" : req.getContextPath());
+            c.setMaxAge(7 * 24 * 60 * 60);
+            try {
+                resp.addCookie(c);
+            } catch (IllegalArgumentException ex) {
+                // ignore cookie errors to avoid interrupting response
+            }
+
         } catch (NumberFormatException e) {
             out.println("    <h1>Error</h1>");
             out.println("    <p style=\"color: red;\">Invalid number format:  " + e.getMessage() + "</p>");
@@ -141,35 +127,24 @@ public class CapacitorServlet extends HttpServlet {
             out.println("    <p style=\"color: red;\">Calculation error: " + e.getMessage() + "</p>");
         }
 
-        out. println("    <br><a href=\"" + ctx + "/capacitor\">Calculate Another</a>");
+        out.println("    <br><a href=\"" + ctx + "/capacitor\">Calculate Another</a>");
         out.println("    <br><a href=\"" + ctx + "/history\">View History</a>");
         out.println("    <br><a href=\"" + ctx + "/\">Back to Home</a>");
         out.println("</body>");
         out.println("</html>");
     }
 
-    /**
-     * Handle GET requests by delegating to processRequest. 
-     *
-     * @param req the HttpServletRequest
-     * @param resp the HttpServletResponse
-     * @throws ServletException if a servlet-specific error occurs
-     * @throws IOException if an I/O error occurs
-     */
+    private String sanitizeCookieValue(String s) {
+        if (s == null) return "";
+        return s.replaceAll("[^A-Za-z0-9@:_\\-\\.]", "_");
+    }
+
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
         processRequest(req, resp);
     }
 
-    /**
-     * Handle POST requests by delegating to processRequest. 
-     *
-     * @param req the HttpServletRequest
-     * @param resp the HttpServletResponse
-     * @throws ServletException if a servlet-specific error occurs
-     * @throws IOException if an I/O error occurs
-     */
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {

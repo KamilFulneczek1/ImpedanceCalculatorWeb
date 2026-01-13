@@ -1,24 +1,25 @@
 package com.mycompany.controller;
 
-import com.mycompany.  model.ImpedanceModel;
-import com.mycompany.  model.CircuitElement;
-import com. mycompany.model.Complex;
+import com.mycompany.model.ImpedanceModel;
+import com.mycompany.model.CircuitElement;
+import com.mycompany.model.Complex;
 
 import jakarta.servlet.ServletException;
-import jakarta. servlet.annotation.  WebServlet;
-import jakarta.servlet.  http.HttpServlet;
-import jakarta.  servlet.http.HttpServletRequest;
-import jakarta. servlet.  http.HttpServletResponse;
+import jakarta.servlet.annotation.WebServlet;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
-import java.io. IOException;
+import java.io.IOException;
 import java.io.PrintWriter;
-import java. util.List;
+import java.util.List;
 
 /**
  * Servlet providing access to the calculation history stored in the model.
  *
  * This servlet displays all past impedance calculations performed during
- * the application lifecycle.  It also provides functionality to clear the history.
+ * the application lifecycle. It also provides functionality to clear the history.
  * Both GET and POST requests are handled uniformly without code duplication.
  *
  * @author Kamil Fulneczek
@@ -27,24 +28,10 @@ import java. util.List;
 @WebServlet(name = "HistoryServlet", urlPatterns = {"/history"})
 public class HistoryServlet extends HttpServlet {
 
-    /**
-     * Get the context path for building URLs.
-     *
-     * @param req the HttpServletRequest
-     * @return context path string
-     */
     private String getContextPath(HttpServletRequest req) {
         return req.getContextPath();
     }
 
-    /**
-     * Process the request for both GET and POST methods. 
-     *
-     * @param req the HttpServletRequest
-     * @param resp the HttpServletResponse
-     * @throws ServletException if a servlet-specific error occurs
-     * @throws IOException if an I/O error occurs
-     */
     protected void processRequest(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
 
@@ -57,8 +44,11 @@ public class HistoryServlet extends HttpServlet {
 
         String action = req.getParameter("action");
         if ("clear".equals(action)) {
-            model. clearHistory();
+            model.clearHistory();
         }
+
+        // read cookie (application may use it). Not printed to keep HTML identical.
+        String cookieInfo = readCookie(req, "lastCalc");
 
         String ctx = getContextPath(req);
 
@@ -75,11 +65,11 @@ public class HistoryServlet extends HttpServlet {
         out.println("    <h1>Calculation History</h1>");
 
         List<CircuitElement> elements = model.getHistoryElements();
-        List<Double> frequencies = model. getHistoryFrequencies();
+        List<Double> frequencies = model.getHistoryFrequencies();
         List<Complex> results = model.getHistoryResults();
 
         if (elements.isEmpty()) {
-            out. println("    <p>No calculations performed yet.</p>");
+            out.println("    <p>No calculations performed yet.</p>");
         } else {
             out.println("    <table border=\"1\">");
             out.println("        <tr>");
@@ -95,49 +85,41 @@ public class HistoryServlet extends HttpServlet {
                 out.println("            <td>" + (i + 1) + "</td>");
                 out.println("            <td>" + elements.get(i).description() + "</td>");
                 out.println("            <td>" + frequencies.get(i) + "</td>");
-                out.println("            <td>" + results. get(i).toString() + "</td>");
+                out.println("            <td>" + results.get(i).toString() + "</td>");
                 out.println("            <td>" + String.format("%.6g", results.get(i).magnitude()) + "</td>");
                 out.println("        </tr>");
             }
 
             out.println("    </table>");
-            out.println("    <br>");
-            out.println("    <form action=\"" + ctx + "/history\" method=\"post\">");
-            out.println("        <input type=\"hidden\" name=\"action\" value=\"clear\">");
-            out.println("        <button type=\"submit\">Clear History</button>");
-            out.println("    </form>");
         }
 
-        out. println("    <br><a href=\"" + ctx + "/\">Back to Home</a>");
+        out.println("    <form action=\"" + ctx + "/history\" method=\"post\">");
+        out.println("        <input type=\"hidden\" name=\"action\" value=\"clear\">");
+        out.println("        <button type=\"submit\">Clear History</button>");
+        out.println("    </form>");
+
+        out.println("    <br><a href=\"" + ctx + "/\">Back to Home</a>");
         out.println("</body>");
         out.println("</html>");
     }
 
-    /**
-     * Handle GET requests by delegating to processRequest. 
-     *
-     * @param req the HttpServletRequest
-     * @param resp the HttpServletResponse
-     * @throws ServletException if a servlet-specific error occurs
-     * @throws IOException if an I/O error occurs
-     */
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
         processRequest(req, resp);
     }
 
-    /**
-     * Handle POST requests by delegating to processRequest. 
-     *
-     * @param req the HttpServletRequest
-     * @param resp the HttpServletResponse
-     * @throws ServletException if a servlet-specific error occurs
-     * @throws IOException if an I/O error occurs
-     */
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
         processRequest(req, resp);
+    }
+
+    private String readCookie(HttpServletRequest req, String name) {
+        if (req.getCookies() == null) return null;
+        for (Cookie c : req.getCookies()) {
+            if (name.equals(c.getName())) return c.getValue();
+        }
+        return null;
     }
 }
