@@ -19,15 +19,19 @@ import java.nio.charset.StandardCharsets;
 import jakarta.servlet.http.Cookie;
 
 /**
- * Servlet handling impedance calculations for resistors. 
+ * Servlet handling impedance calculations for resistors.
  *
- * This servlet provides access to resistor impedance calculations using
- * the shared ImpedanceModel instance.  Both GET and POST requests are handled
- * uniformly without code duplication by delegating to a common processRequest method.
+ * The servlet displays a form for entering resistance and frequency and
+ * shows calculated impedance and magnitude. Both GET and POST are handled
+ * by delegating to {@link #processRequest(HttpServletRequest, HttpServletResponse)}.
  *
- * Cookies:
- * - writes cookies "lastFrequency", "lastComponent" and "lastValue" on successful calculation
- * - reads cookies and displays last-used values on the input form
+ * This servlet also demonstrates cookies usage: it reads cookies named
+ * "lastFrequency", "lastComponent" and "lastValue" and displays a compact
+ * informational line; after a successful calculation it writes these cookies
+ * so the values are available on subsequent visits.
+ *
+ * Note: the servlet obtains the shared {@link ImpedanceModel} instance from
+ * the servlet context attribute named {@link AppContextListener#MODEL_ATTRIBUTE}.
  *
  * @author Kamil Fulneczek
  * @version 1.2
@@ -36,25 +40,24 @@ import jakarta.servlet.http.Cookie;
 public class ResistorServlet extends HttpServlet {
 
     /**
-     * Get the context path for building URLs.
+     * Return the servlet context path to be used when building links or forms.
      *
      * @param req the HttpServletRequest
-     * @return context path string
+     * @return the context path string (never null, may be empty)
      */
     private String getContextPath(HttpServletRequest req) {
         return req.getContextPath();
     }
 
     /**
-     * Process the request for both GET and POST methods. 
-     *
-     * If resistance and frequency parameters are provided, performs the calculation. 
-     * Otherwise, displays the input form.
+     * Main dispatcher used for both GET and POST.
+     * If required parameters are missing the input form is shown, otherwise
+     * the calculation is performed.
      *
      * @param req the HttpServletRequest
      * @param resp the HttpServletResponse
-     * @throws ServletException if a servlet-specific error occurs
-     * @throws IOException if an I/O error occurs
+     * @throws ServletException on servlet error (e.g. model missing)
+     * @throws IOException on I/O error when writing the response
      */
     protected void processRequest(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
@@ -75,20 +78,18 @@ public class ResistorServlet extends HttpServlet {
     }
 
     /**
-     * Display the input form for resistor impedance calculation.
+     * Render the input form for resistor calculation.
+     * Reads cookies (if present) and prints a single small informational
+     * line in the format "Last used: R: 15 | frequency: 40.0 Hz".
      *
-     * Reads cookies (if present) and displays a small informational line
-     * with last used component/frequency/value. The rest of the form layout remains unchanged.
-     *
-     * @param req the HttpServletRequest (used to read cookies)
-     * @param resp the HttpServletResponse (used to obtain writer)
-     * @param ctx the context path
-     * @throws IOException if I/O error occurs
+     * @param req the HttpServletRequest used for cookie access
+     * @param resp the HttpServletResponse used to obtain writer
+     * @param ctx the application context path used to build the form action
+     * @throws IOException if an I/O error occurs while writing response
      */
     private void displayForm(HttpServletRequest req, HttpServletResponse resp, String ctx) throws IOException {
         PrintWriter out = resp.getWriter();
 
-        // read cookies
         String lastFreq = null;
         String lastComp = null;
         String lastVal = null;
@@ -114,7 +115,6 @@ public class ResistorServlet extends HttpServlet {
         out.println("<body>");
         out.println("    <h1>Resistor Impedance Calculator</h1>");
 
-        // new unified cookie display format: "Last used: R: 15 | frequency: 40.0 Hz"
         if (lastComp != null || lastVal != null || lastFreq != null) {
             StringBuilder info = new StringBuilder("Last used:");
             boolean added = false;
@@ -148,20 +148,19 @@ public class ResistorServlet extends HttpServlet {
     }
 
     /**
-     * Perform the impedance calculation and display the result. 
+     * Perform the impedance calculation and render the result page.
+     * On successful calculation this method also writes three cookies:
+     * - lastFrequency: frequency used (encoded)
+     * - lastComponent: short component code ("R")
+     * - lastValue: provided value for the component
      *
-     * On successful calculation, three cookies are written:
-     * - lastFrequency: frequency used for calculation
-     * - lastComponent: "R" for resistor
-     * - lastValue: numeric value provided for resistor
-     *
-     * @param req the HttpServletRequest
-     * @param resp the HttpServletResponse
-     * @param ctx the context path
-     * @param resistanceStr the resistance value as string
-     * @param frequencyStr the frequency value as string
-     * @throws ServletException if the model is not found
-     * @throws IOException if an I/O error occurs
+     * @param req the HttpServletRequest used to read context and build cookie path
+     * @param resp the HttpServletResponse used to write output and add cookies
+     * @param ctx the context path used for links in the result page
+     * @param resistanceStr the resistance value as provided by user (string form)
+     * @param frequencyStr the frequency value as provided by user (string form)
+     * @throws ServletException if the shared ImpedanceModel is not found in ServletContext
+     * @throws IOException if an I/O error occurs while writing response
      */
     private void performCalculation(HttpServletRequest req, HttpServletResponse resp, String ctx, String resistanceStr, String frequencyStr)
             throws ServletException, IOException {
@@ -196,9 +195,8 @@ public class ResistorServlet extends HttpServlet {
             out.println("    <p>Impedance:  " + impedance.toString() + "</p>");
             out.println("    <p>Magnitude: " + String.format("%.6g", impedance.magnitude()) + " Ω</p>");
 
-            // set cookies (URL-encoded to avoid spaces/commas)
             Cookie lastFreq = new Cookie("lastFrequency", URLEncoder.encode(String.valueOf(frequency), StandardCharsets.UTF_8));
-            lastFreq.setMaxAge(60 * 60 * 24 * 30); // 30 days
+            lastFreq.setMaxAge(60 * 60 * 24 * 30);
             String path = req.getContextPath();
             lastFreq.setPath(path == null || path.isEmpty() ? "/" : path);
             resp.addCookie(lastFreq);
@@ -229,12 +227,12 @@ public class ResistorServlet extends HttpServlet {
     }
 
     /**
-     * Handle GET requests by delegating to processRequest. 
+     * Delegate GET to the unified request processor.
      *
      * @param req the HttpServletRequest
      * @param resp the HttpServletResponse
-     * @throws ServletException if a servlet-specific error occurs
-     * @throws IOException if an I/O error occurs
+     * @throws ServletException on servlet error
+     * @throws IOException on I/O error
      */
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)
@@ -243,12 +241,12 @@ public class ResistorServlet extends HttpServlet {
     }
 
     /**
-     * Handle POST requests by delegating to processRequest. 
+     * Delegate POST to the unified request processor.
      *
      * @param req the HttpServletRequest
      * @param resp the HttpServletResponse
-     * @throws ServletException if a servlet-specific error occurs
-     * @throws IOException if an I/O error occurs
+     * @throws ServletException on servlet error
+     * @throws IOException on I/O error
      */
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp)

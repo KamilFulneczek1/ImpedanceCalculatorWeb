@@ -21,13 +21,9 @@ import jakarta.servlet.http.Cookie;
 /**
  * Servlet handling impedance calculations for inductors.
  *
- * This servlet provides access to inductor impedance calculations using
- * the shared ImpedanceModel instance. Both GET and POST requests are handled
- * uniformly without code duplication by delegating to a common processRequest method. 
- *
- * Cookies:
- * - writes cookies "lastFrequency", "lastComponent" and "lastValue" on successful calculation
- * - reads cookies and displays last-used values on the input form
+ * The servlet renders an input form for inductance and frequency and computes
+ * the impedance using the shared model. Cookie read/write behaviour is the same
+ * as for other component servlets (lastFrequency, lastComponent, lastValue).
  *
  * @author Kamil Fulneczek
  * @version 1.2
@@ -35,10 +31,24 @@ import jakarta.servlet.http.Cookie;
 @WebServlet(name = "InductorServlet", urlPatterns = {"/inductor"})
 public class InductorServlet extends HttpServlet {
 
+    /**
+     * Return application context path.
+     *
+     * @param req the request
+     * @return context path string
+     */
     private String getContextPath(HttpServletRequest req) {
         return req.getContextPath();
     }
 
+    /**
+     * Unified entry point used by GET and POST.
+     *
+     * @param req HTTP request
+     * @param resp HTTP response
+     * @throws ServletException on servlet error
+     * @throws IOException on I/O error
+     */
     protected void processRequest(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
 
@@ -57,32 +67,35 @@ public class InductorServlet extends HttpServlet {
     }
 
     /**
-     * Display the input form for inductor impedance calculation.
+     * Render the input form and a small cookie info line in the format:
+     * "Last used: L: 0.01 | frequency: 1000.0 Hz".
      *
-     * Reads cookies (if present) and displays a single informational line
-     * in format: "Last used: L: 0.01 | frequency: 1000.0 Hz".
-     *
-     * @param req the HttpServletRequest
-     * @param resp the HttpServletResponse
-     * @param ctx the context path
-     * @throws IOException if I/O error occurs
+     * @param req HTTP request
+     * @param resp HTTP response
+     * @param ctx context path
+     * @throws IOException when writing fails
      */
     private void displayForm(HttpServletRequest req, HttpServletResponse resp, String ctx) throws IOException {
         PrintWriter out = resp.getWriter();
 
-        // read cookies
         String lastFreq = null;
         String lastComp = null;
         String lastVal = null;
         Cookie[] cookies = req.getCookies();
         if (cookies != null) {
             for (Cookie c : cookies) {
-                if ("lastFrequency".equals(c.getName())) {
-                    lastFreq = URLDecoder.decode(c.getValue(), StandardCharsets.UTF_8);
-                } else if ("lastComponent".equals(c.getName())) {
-                    lastComp = URLDecoder.decode(c.getValue(), StandardCharsets.UTF_8);
-                } else if ("lastValue".equals(c.getName())) {
-                    lastVal = URLDecoder.decode(c.getValue(), StandardCharsets.UTF_8);
+                if (null != c.getName()) switch (c.getName()) {
+                    case "lastFrequency":
+                        lastFreq = URLDecoder.decode(c.getValue(), StandardCharsets.UTF_8);
+                        break;
+                    case "lastComponent":
+                        lastComp = URLDecoder.decode(c.getValue(), StandardCharsets.UTF_8);
+                        break;
+                    case "lastValue":
+                        lastVal = URLDecoder.decode(c.getValue(), StandardCharsets.UTF_8);
+                        break;
+                    default:
+                        break;
                 }
             }
         }
@@ -128,6 +141,17 @@ public class InductorServlet extends HttpServlet {
         out.println("</html>");
     }
 
+    /**
+     * Compute impedance and set cookies with used parameters.
+     *
+     * @param req HTTP request
+     * @param resp HTTP response
+     * @param ctx context path
+     * @param inductanceStr inductance string supplied by user
+     * @param frequencyStr frequency string supplied by user
+     * @throws ServletException if model missing
+     * @throws IOException if writing response fails
+     */
     private void performCalculation(HttpServletRequest req, HttpServletResponse resp, String ctx, String inductanceStr, String frequencyStr)
             throws ServletException, IOException {
 
@@ -161,7 +185,6 @@ public class InductorServlet extends HttpServlet {
             out.println("    <p>Impedance:  " + impedance.toString() + "</p>");
             out.println("    <p>Magnitude: " + String.format("%.6g", impedance.magnitude()) + " Ω</p>");
 
-            // set cookies
             Cookie lastFreq = new Cookie("lastFrequency", URLEncoder.encode(String.valueOf(frequency), StandardCharsets.UTF_8));
             lastFreq.setMaxAge(60 * 60 * 24 * 30);
             String path = req.getContextPath();

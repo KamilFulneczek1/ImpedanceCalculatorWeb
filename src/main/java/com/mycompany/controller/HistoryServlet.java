@@ -6,7 +6,6 @@ import com.mycompany.model.Complex;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -20,7 +19,10 @@ import java.util.List;
  *
  * This servlet displays all past impedance calculations performed during
  * the application lifecycle. It also provides functionality to clear the history.
- * Both GET and POST requests are handled uniformly without code duplication.
+ * Both GET and POST requests are handled uniformly.
+ *
+ * History data is obtained from the shared {@link ImpedanceModel} instance
+ * stored in the servlet context by {@link AppContextListener}.
  *
  * @author Kamil Fulneczek
  * @version 1.0
@@ -28,10 +30,25 @@ import java.util.List;
 @WebServlet(name = "HistoryServlet", urlPatterns = {"/history"})
 public class HistoryServlet extends HttpServlet {
 
+    /**
+     * Get the context path for building URLs.
+     *
+     * @param req the HttpServletRequest
+     * @return context path string
+     */
     private String getContextPath(HttpServletRequest req) {
         return req.getContextPath();
     }
 
+    /**
+     * Process the request for both GET and POST methods.
+     * If the "action=clear" parameter is present the model history is cleared.
+     *
+     * @param req the HttpServletRequest
+     * @param resp the HttpServletResponse
+     * @throws ServletException if model missing or another servlet error occurs
+     * @throws IOException if an I/O error occurs while writing response
+     */
     protected void processRequest(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
 
@@ -46,9 +63,6 @@ public class HistoryServlet extends HttpServlet {
         if ("clear".equals(action)) {
             model.clearHistory();
         }
-
-        // read cookie (application may use it). Not printed to keep HTML identical.
-        String cookieInfo = readCookie(req, "lastCalc");
 
         String ctx = getContextPath(req);
 
@@ -91,35 +105,43 @@ public class HistoryServlet extends HttpServlet {
             }
 
             out.println("    </table>");
+            out.println("    <br>");
+            out.println("    <form action=\"" + ctx + "/history\" method=\"post\">");
+            out.println("        <input type=\"hidden\" name=\"action\" value=\"clear\">");
+            out.println("        <button type=\"submit\">Clear History</button>");
+            out.println("    </form>");
         }
-
-        out.println("    <form action=\"" + ctx + "/history\" method=\"post\">");
-        out.println("        <input type=\"hidden\" name=\"action\" value=\"clear\">");
-        out.println("        <button type=\"submit\">Clear History</button>");
-        out.println("    </form>");
 
         out.println("    <br><a href=\"" + ctx + "/\">Back to Home</a>");
         out.println("</body>");
         out.println("</html>");
     }
 
+    /**
+     * Delegate GET to processRequest.
+     *
+     * @param req request
+     * @param resp response
+     * @throws ServletException on servlet error
+     * @throws IOException on I/O error
+     */
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
         processRequest(req, resp);
     }
 
+    /**
+     * Delegate POST to processRequest.
+     *
+     * @param req request
+     * @param resp response
+     * @throws ServletException on servlet error
+     * @throws IOException on I/O error
+     */
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
         processRequest(req, resp);
-    }
-
-    private String readCookie(HttpServletRequest req, String name) {
-        if (req.getCookies() == null) return null;
-        for (Cookie c : req.getCookies()) {
-            if (name.equals(c.getName())) return c.getValue();
-        }
-        return null;
     }
 }

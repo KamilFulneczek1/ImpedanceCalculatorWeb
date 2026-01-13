@@ -24,14 +24,10 @@ import jakarta.servlet.http.Cookie;
  *
  * This servlet provides access to the full circuit expression parsing functionality
  * using the ExpressionParser class. It supports nested series and parallel connections
- * with any combination of resistors, capacitors, and inductors.
+ * and displays results page with impedance and magnitude.
  *
- * Both GET and POST requests are handled uniformly without code duplication
- * by delegating to a common processRequest method. 
- *
- * Cookies:
- * - writes cookies "lastFrequency", "lastComponent" and "lastValue" on successful calculation
- * - reads cookies and displays last-used values on the input form
+ * Cookies are used similarly as in other component servlets; additionally the
+ * entire expression is stored in lastValue (encoded).
  *
  * @author Kamil Fulneczek
  * @version 1.2
@@ -39,10 +35,25 @@ import jakarta.servlet.http.Cookie;
 @WebServlet(name = "CircuitServlet", urlPatterns = {"/circuit"})
 public class CircuitServlet extends HttpServlet {
 
+    /**
+     * Return application context path.
+     *
+     * @param req the request
+     * @return context path string
+     */
     private String getContextPath(HttpServletRequest req) {
         return req.getContextPath();
     }
 
+    /**
+     * Unified entry point for GET and POST. Shows form when parameters missing,
+     * otherwise parses expression and performs calculation.
+     *
+     * @param req HTTP request
+     * @param resp HTTP response
+     * @throws ServletException on servlet errors
+     * @throws IOException on I/O errors while writing response
+     */
     protected void processRequest(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
 
@@ -61,32 +72,35 @@ public class CircuitServlet extends HttpServlet {
     }
 
     /**
-     * Display the input form for circuit expression impedance calculation.
+     * Render the input form and display cookie info in the format:
+     * "Last used: EXPR: series(R:100,...) | frequency: 1000.0 Hz".
      *
-     * Reads cookies (if present) and displays a single informational line
-     * in format: "Last used: EXPR: series(R:100,...) | frequency: 1000.0 Hz".
-     *
-     * @param req the HttpServletRequest
-     * @param resp the HttpServletResponse
-     * @param ctx the context path
-     * @throws IOException if I/O error occurs
+     * @param req HTTP request (for cookie retrieval)
+     * @param resp HTTP response (for writer)
+     * @param ctx application context path
+     * @throws IOException if writing response fails
      */
     private void displayForm(HttpServletRequest req, HttpServletResponse resp, String ctx) throws IOException {
         PrintWriter out = resp.getWriter();
 
-        // read cookies
         String lastFreq = null;
         String lastComp = null;
         String lastVal = null;
         Cookie[] cookies = req.getCookies();
         if (cookies != null) {
             for (Cookie c : cookies) {
-                if ("lastFrequency".equals(c.getName())) {
-                    lastFreq = URLDecoder.decode(c.getValue(), StandardCharsets.UTF_8);
-                } else if ("lastComponent".equals(c.getName())) {
-                    lastComp = URLDecoder.decode(c.getValue(), StandardCharsets.UTF_8);
-                } else if ("lastValue".equals(c.getName())) {
-                    lastVal = URLDecoder.decode(c.getValue(), StandardCharsets.UTF_8);
+                if (null != c.getName()) switch (c.getName()) {
+                    case "lastFrequency":
+                        lastFreq = URLDecoder.decode(c.getValue(), StandardCharsets.UTF_8);
+                        break;
+                    case "lastComponent":
+                        lastComp = URLDecoder.decode(c.getValue(), StandardCharsets.UTF_8);
+                        break;
+                    case "lastValue":
+                        lastVal = URLDecoder.decode(c.getValue(), StandardCharsets.UTF_8);
+                        break;
+                    default:
+                        break;
                 }
             }
         }
@@ -139,6 +153,17 @@ public class CircuitServlet extends HttpServlet {
         out.println("</html>");
     }
 
+    /**
+     * Parse expression, compute impedance and set cookies with used parameters.
+     *
+     * @param req HTTP request
+     * @param resp HTTP response
+     * @param ctx application context path
+     * @param expression textual circuit expression provided by user
+     * @param frequencyStr frequency string provided by user
+     * @throws ServletException if model is not present
+     * @throws IOException if writing response fails
+     */
     private void performCalculation(HttpServletRequest req, HttpServletResponse resp, String ctx, String expression, String frequencyStr)
             throws ServletException, IOException {
 
@@ -171,7 +196,6 @@ public class CircuitServlet extends HttpServlet {
             out.println("    <p>Impedance:  " + impedance.toString() + "</p>");
             out.println("    <p>Magnitude:  " + String.format("%.6g", impedance.magnitude()) + " Ω</p>");
 
-            // set cookies: store expression as lastValue (encoded) and mark lastComponent as "EXPR"
             Cookie lastFreq = new Cookie("lastFrequency", URLEncoder.encode(String.valueOf(frequency), StandardCharsets.UTF_8));
             lastFreq.setMaxAge(60 * 60 * 24 * 30);
             String path = req.getContextPath();

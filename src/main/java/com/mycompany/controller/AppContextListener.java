@@ -1,11 +1,11 @@
-package com. mycompany.controller;
+package com.mycompany.controller;
 
-import com.mycompany. model.ImpedanceModel;
+import com.mycompany.model.ImpedanceModel;
 
 import jakarta.servlet.ServletContext;
-import jakarta. servlet.ServletContextEvent;
-import jakarta. servlet.ServletContextListener;
-import jakarta. servlet.annotation.WebListener;
+import jakarta.servlet.ServletContextEvent;
+import jakarta.servlet.ServletContextListener;
+import jakarta.servlet.annotation.WebListener;
 
 /**
  * Application context listener that creates a single instance of ImpedanceModel
@@ -14,9 +14,9 @@ import jakarta. servlet.annotation.WebListener;
  * This ensures that all servlets share the same model instance throughout
  * the entire application lifecycle, without using static fields.
  *
- * Servlets can retrieve the shared model using: 
+ * Servlets can retrieve the shared model using:
  * <pre>
- *   ImpedanceModel model = (ImpedanceModel) getServletContext().getAttribute("impedanceModel");
+ *   ImpedanceModel model = (ImpedanceModel) getServletContext().getAttribute(AppContextListener.MODEL_ATTRIBUTE);
  * </pre>
  *
  * @author Kamil Fulneczek

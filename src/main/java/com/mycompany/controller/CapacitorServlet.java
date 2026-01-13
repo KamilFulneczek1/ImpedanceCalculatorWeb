@@ -21,13 +21,12 @@ import jakarta.servlet.http.Cookie;
 /**
  * Servlet handling impedance calculations for capacitors.
  *
- * This servlet provides access to capacitor impedance calculations using
- * the shared ImpedanceModel instance. Both GET and POST requests are handled
- * uniformly without code duplication by delegating to a common processRequest method. 
+ * The servlet displays a form for entering capacitance and frequency and
+ * shows calculated impedance and magnitude. It delegates both GET and POST
+ * to {@link #processRequest(HttpServletRequest, HttpServletResponse)}.
  *
- * Cookies:
- * - writes cookies "lastFrequency", "lastComponent" and "lastValue" on successful calculation
- * - reads cookies and displays last-used values on the input form
+ * It also reads and writes cookies named "lastFrequency", "lastComponent",
+ * and "lastValue" to provide the user with a short reminder of previous inputs.
  *
  * @author Kamil Fulneczek
  * @version 1.2
@@ -35,10 +34,24 @@ import jakarta.servlet.http.Cookie;
 @WebServlet(name = "CapacitorServlet", urlPatterns = {"/capacitor"})
 public class CapacitorServlet extends HttpServlet {
 
+    /**
+     * Return application context path.
+     *
+     * @param req the request
+     * @return context path string
+     */
     private String getContextPath(HttpServletRequest req) {
         return req.getContextPath();
     }
 
+    /**
+     * Unified entry point for GET and POST.
+     *
+     * @param req HTTP request
+     * @param resp HTTP response
+     * @throws ServletException on servlet error
+     * @throws IOException on I/O error
+     */
     protected void processRequest(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
 
@@ -57,32 +70,35 @@ public class CapacitorServlet extends HttpServlet {
     }
 
     /**
-     * Display the input form for capacitor impedance calculation.
+     * Render the input form and display cookie info in the format:
+     * "Last used: C: 15 | frequency: 40.0 Hz".
      *
-     * Reads cookies (if present) and displays a single informational line
-     * in format: "Last used: C: 15 | frequency: 40.0 Hz".
-     *
-     * @param req the HttpServletRequest
-     * @param resp the HttpServletResponse
-     * @param ctx the context path
-     * @throws IOException if I/O error occurs
+     * @param req HTTP request (for cookie retrieval)
+     * @param resp HTTP response (for writer)
+     * @param ctx application context path
+     * @throws IOException when writing response fails
      */
     private void displayForm(HttpServletRequest req, HttpServletResponse resp, String ctx) throws IOException {
         PrintWriter out = resp.getWriter();
 
-        // read cookies
         String lastFreq = null;
         String lastComp = null;
         String lastVal = null;
         Cookie[] cookies = req.getCookies();
         if (cookies != null) {
             for (Cookie c : cookies) {
-                if ("lastFrequency".equals(c.getName())) {
-                    lastFreq = URLDecoder.decode(c.getValue(), StandardCharsets.UTF_8);
-                } else if ("lastComponent".equals(c.getName())) {
-                    lastComp = URLDecoder.decode(c.getValue(), StandardCharsets.UTF_8);
-                } else if ("lastValue".equals(c.getName())) {
-                    lastVal = URLDecoder.decode(c.getValue(), StandardCharsets.UTF_8);
+                if (null != c.getName()) switch (c.getName()) {
+                    case "lastFrequency":
+                        lastFreq = URLDecoder.decode(c.getValue(), StandardCharsets.UTF_8);
+                        break;
+                    case "lastComponent":
+                        lastComp = URLDecoder.decode(c.getValue(), StandardCharsets.UTF_8);
+                        break;
+                    case "lastValue":
+                        lastVal = URLDecoder.decode(c.getValue(), StandardCharsets.UTF_8);
+                        break;
+                    default:
+                        break;
                 }
             }
         }
@@ -128,6 +144,17 @@ public class CapacitorServlet extends HttpServlet {
         out.println("</html>");
     }
 
+    /**
+     * Perform calculation and write cookies with the used values.
+     *
+     * @param req HTTP request
+     * @param resp HTTP response
+     * @param ctx application context
+     * @param capacitanceStr user-provided capacitance string
+     * @param frequencyStr user-provided frequency string
+     * @throws ServletException if the shared model is missing
+     * @throws IOException if writing response fails
+     */
     private void performCalculation(HttpServletRequest req, HttpServletResponse resp, String ctx, String capacitanceStr, String frequencyStr)
             throws ServletException, IOException {
 
@@ -161,7 +188,6 @@ public class CapacitorServlet extends HttpServlet {
             out.println("    <p>Impedance:  " + impedance.toString() + "</p>");
             out.println("    <p>Magnitude: " + String.format("%.6g", impedance.magnitude()) + " Ω</p>");
 
-            // set cookies
             Cookie lastFreq = new Cookie("lastFrequency", URLEncoder.encode(String.valueOf(frequency), StandardCharsets.UTF_8));
             lastFreq.setMaxAge(60 * 60 * 24 * 30);
             String path = req.getContextPath();
