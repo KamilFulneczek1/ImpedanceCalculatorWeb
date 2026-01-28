@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<persistence version="3.0" xmlns="https://jakarta.ee/xml/ns/persistence"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xsi:schemaLocation="https://jakarta.ee/xml/ns/persistence https://jakarta.ee/xml/ns/persistence/persistence_3_0.xsd">
+  <persistence-unit name="my_persistence_unit" transaction-type="JTA">
+    <jta-data-source>java:app/DataBase</jta-data-source>
+    <class>com.mycompany.entities.Calculation</class>
+    <class>com.mycompany.entities.Component</class>
+    <exclude-unlisted-classes>false</exclude-unlisted-classes>
+
+    <properties>
+      <!-- EclipseLink: utwórz tabele w bazie przy wdrożeniu -->
+      <property name="eclipselink.ddl-generation" value="create-tables"/>
+      <property name="eclipselink.ddl-generation.output-mode" value="database"/>
+      <!-- opcjonalnie logowanie SQL dla debugowania -->
+      <property name="eclipselink.logging.level" value="FINE"/>
+      <!-- jeśli chcesz wskazać platformę Derby (opcjonalne) -->
+      <property name="eclipselink.target-database" value="Derby" />
+    </properties>
+  </persistence-unit>
+</persistence>
